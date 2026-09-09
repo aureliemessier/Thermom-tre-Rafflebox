@@ -5,6 +5,9 @@ const { createCanvas } = require('canvas');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Fonction de pause compatible
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 app.get('/thermometre.png', async (req, res) => {
   let montantActuel = 0;
   const objectif = 3000;
@@ -17,40 +20,44 @@ app.get('/thermometre.png', async (req, res) => {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
+        '--disable-blink-features=AutomationControlled',
         '--single-process'
       ]
     });
     
     const page = await browser.newPage();
 
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
+    // Empreinte d'un vrai navigateur
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+    await page.setViewport({ width: 1280, height: 800 });
+
     // Navigation vers Rafflebox
     await page.goto('https://rafflebox.ca/fr/raffle/fa-ll/', { 
-      waitUntil: 'networkidle0',
+      waitUntil: 'networkidle2',
       timeout: 45000 
     });
 
-    // Attendre explicitement que l'élément avec la classe de montant soit chargé
-    await page.waitForSelector('.text-charcoal-black-500', { timeout: 10000 }).catch(() => {});
+    // Attendre 4 secondes que le JavaScript de Rafflebox s'exécute
+    await delay(4000);
 
-    // Extraction précise du montant
+    // Extraction du texte
     const texteMontant = await page.evaluate(() => {
-      // 1. Cibler la classe exacte fournie
+      // Recherche prioritaire par la classe Tailwind
       const el = document.querySelector('.text-charcoal-black-500');
       if (el && el.innerText) return el.innerText;
 
-      // 2. Repli de sécurité si la classe principale varie légèrement
-      const fallback = document.querySelector('.text-7xl');
-      return fallback ? fallback.innerText : '';
+      // Recherche de secours sur toute la page
+      const elements = Array.from(document.querySelectorAll('p, div, span, h1, h2'));
+      const trouve = elements.find(e => e.innerText && e.innerText.includes('$'));
+      return trouve ? trouve.innerText : '';
     });
 
-    // Extraction du chiffre (ex: "815 $" -> 815)
+    // Nettoyage de la chaîne de caractères (ex: "815 $" -> 815)
     const match = texteMontant.match(/([0-9\s,]+)/);
     if (match) {
       const chiffrePropre = match[1].replace(/\s/g, '').replace(',', '.');
       const val = parseFloat(chiffrePropre);
-      if (!isNaN(val)) {
+      if (!isNaN(val) && val > 0) {
         montantActuel = val;
       }
     }
@@ -109,7 +116,7 @@ app.get('/thermometre.png', async (req, res) => {
   ctx.textAlign = 'center';
   ctx.fillText('Mise à jour automatique en temps réel', 300, 190);
 
-  // En-têtes Anti-Cache
+  // Anti-Cache
   res.setHeader('Content-Type', 'image/png');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
