@@ -11,15 +11,26 @@ app.get('/thermometre.png', async (req, res) => {
   const couleurTheme = '#c21e56';
 
   try {
-    const browser = await puppeteer.launch({ 
-      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+    // Lancement de Puppeteer avec options de compatibilité hébergeur
+    const browser = await puppeteer.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--single-process'
+      ]
     });
+    
     const page = await browser.newPage();
     
-    // Visite la page Rafflebox
-    await page.goto('https://rafflebox.ca/fr/raffle/fa-ll/', { waitUntil: 'networkidle2' });
+    // Navigation vers Rafflebox
+    await page.goto('https://rafflebox.ca/fr/raffle/fa-ll/', { 
+      waitUntil: 'networkidle2',
+      timeout: 30000 
+    });
 
-    // Lit le montant affiché sur la page
+    // Extraction du montant du gros lot
     const texteMontant = await page.evaluate(() => {
       const el = document.querySelector('.jackpot-amount, .amount, h1, h2');
       return el ? el.innerText : '';
@@ -29,6 +40,7 @@ app.get('/thermometre.png', async (req, res) => {
     if (match) {
       montantActuel = parseFloat(match[1].replace(/\s/g, '').replace(',', '.'));
     }
+    
     await browser.close();
   } catch (error) {
     console.error("Erreur de lecture Rafflebox:", error);
@@ -40,7 +52,7 @@ app.get('/thermometre.png', async (req, res) => {
   const canvas = createCanvas(600, 220);
   const ctx = canvas.getContext('2d');
 
-  // Arrière-plan blanc
+  // Arrière-plan
   ctx.fillStyle = '#ffffff';
   ctx.roundRect(0, 0, 600, 220, 12);
   ctx.fill();
@@ -51,18 +63,17 @@ app.get('/thermometre.png', async (req, res) => {
   ctx.textAlign = 'center';
   ctx.fillText('OBJECTIF DU 50/50 : 3 000 $', 300, 45);
 
-  // Montant récolté en couleur #c21e56
+  // Montant
   ctx.fillStyle = couleurTheme;
   ctx.font = 'bold 34px Arial';
   ctx.fillText(`${montantActuel.toLocaleString('fr-CA')} $ Amassés`, 300, 90);
 
-  // Fond du thermomètre
+  // Thermomètre
   ctx.fillStyle = '#e0e0e0';
   ctx.beginPath();
   ctx.roundRect(50, 115, 500, 36, 18);
   ctx.fill();
 
-  // Remplissage dynamique du thermomètre
   if (pourcentage > 0) {
     const largeurRemplissage = Math.max((500 * pourcentage) / 100, 36);
     ctx.fillStyle = couleurTheme;
@@ -71,19 +82,19 @@ app.get('/thermometre.png', async (req, res) => {
     ctx.fill();
   }
 
-  // Pourcentage inscrit
+  // Pourcentage
   ctx.fillStyle = pourcentage > 15 ? '#ffffff' : '#333333';
   ctx.font = 'bold 16px Arial';
   ctx.textAlign = 'right';
   ctx.fillText(`${Math.round(pourcentage)} %`, 530, 139);
 
-  // Bas de carte
+  // Bas
   ctx.fillStyle = '#777777';
   ctx.font = 'italic 13px Arial';
   ctx.textAlign = 'center';
   ctx.fillText('Mise à jour automatique en temps réel', 300, 190);
 
-  // Anti-cache pour forcer la mise à jour en direct dans le courriel
+  // Anti-cache
   res.setHeader('Content-Type', 'image/png');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
