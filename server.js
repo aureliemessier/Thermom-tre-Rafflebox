@@ -23,7 +23,6 @@ app.get('/thermometre.png', async (req, res) => {
     
     const page = await browser.newPage();
 
-    // Simuler un navigateur complet pour éviter le blocage
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
     // Navigation vers Rafflebox
@@ -32,34 +31,27 @@ app.get('/thermometre.png', async (req, res) => {
       timeout: 45000 
     });
 
-    // Attendre 3 secondes supplémentaires pour s'assurer que le script React/Vue a rendu le montant
-    await page.waitForTimeout(3000);
+    // Attendre explicitement que l'élément avec la classe de montant soit chargé
+    await page.waitForSelector('.text-charcoal-black-500', { timeout: 10000 }).catch(() => {});
 
-    // Extraction du montant par recherche ciblée dans le texte de la page
-    const texteExtrait = await page.evaluate(() => {
-      // 1. Chercher d'abord dans les éléments spécifiques Rafflebox
-      const elementsPrio = document.querySelectorAll('[class*="jackpot"], [class*="amount"], [class*="prize"], h1, h2, h3, span, div');
-      for (let el of elementsPrio) {
-        const txt = el.innerText || '';
-        if (txt.includes('$') && (txt.toLowerCase().includes('gros lot') || txt.toLowerCase().includes('jackpot') || txt.toLowerCase().includes('actuel') || txt.toLowerCase().includes('total'))) {
-          return txt;
-        }
-      }
-      // 2. Si non trouvé, retourner tout le texte du body
-      return document.body ? document.body.innerText : '';
+    // Extraction précise du montant
+    const texteMontant = await page.evaluate(() => {
+      // 1. Cibler la classe exacte fournie
+      const el = document.querySelector('.text-charcoal-black-500');
+      if (el && el.innerText) return el.innerText;
+
+      // 2. Repli de sécurité si la classe principale varie légèrement
+      const fallback = document.querySelector('.text-7xl');
+      return fallback ? fallback.innerText : '';
     });
 
-    // Recherche de la structure du montant ($1 500, 1 500 $, $1,500, etc.)
-    const regexMontant = /\$\s*([0-9\s,\.]+)|([0-9\s,\.]+)\s*\$/;
-    const match = texteExtrait.match(regexMontant);
-
+    // Extraction du chiffre (ex: "815 $" -> 815)
+    const match = texteMontant.match(/([0-9\s,]+)/);
     if (match) {
-      const brut = match[1] || match[2];
-      // Nettoyage des espaces, virgules et séparateurs de milliers
-      const chiffrePropre = brut.replace(/\s/g, '').replace(',', '.');
-      const valeurNume = parseFloat(chiffrePropre);
-      if (!isNaN(valeurNume) && valeurNume > 0) {
-        montantActuel = valeurNume;
+      const chiffrePropre = match[1].replace(/\s/g, '').replace(',', '.');
+      const val = parseFloat(chiffrePropre);
+      if (!isNaN(val)) {
+        montantActuel = val;
       }
     }
     
@@ -70,7 +62,7 @@ app.get('/thermometre.png', async (req, res) => {
 
   const pourcentage = Math.min(Math.max((montantActuel / objectif) * 100, 0), 100);
 
-  // Dessin de l'image PNG (600x220 px)
+  // Dessin du visuel PNG (600x220 px)
   const canvas = createCanvas(600, 220);
   const ctx = canvas.getContext('2d');
 
@@ -90,13 +82,13 @@ app.get('/thermometre.png', async (req, res) => {
   ctx.font = 'bold 34px Arial';
   ctx.fillText(`${montantActuel.toLocaleString('fr-CA')} $ Amassés`, 300, 90);
 
-  // Thermomètre (fond)
+  // Thermomètre (Fond)
   ctx.fillStyle = '#e0e0e0';
   ctx.beginPath();
   ctx.roundRect(50, 115, 500, 36, 18);
   ctx.fill();
 
-  // Thermomètre (remplissage)
+  // Thermomètre (Remplissage)
   if (pourcentage > 0) {
     const largeurRemplissage = Math.max((500 * pourcentage) / 100, 36);
     ctx.fillStyle = couleurTheme;
@@ -105,19 +97,19 @@ app.get('/thermometre.png', async (req, res) => {
     ctx.fill();
   }
 
-  // Pourcentage inscrit
+  // Pourcentage
   ctx.fillStyle = pourcentage > 15 ? '#ffffff' : '#333333';
   ctx.font = 'bold 16px Arial';
   ctx.textAlign = 'right';
   ctx.fillText(`${Math.round(pourcentage)} %`, 530, 139);
 
-  // Note de bas de carte
+  // Pied de carte
   ctx.fillStyle = '#777777';
   ctx.font = 'italic 13px Arial';
   ctx.textAlign = 'center';
   ctx.fillText('Mise à jour automatique en temps réel', 300, 190);
 
-  // Anti-cache
+  // En-têtes Anti-Cache
   res.setHeader('Content-Type', 'image/png');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
