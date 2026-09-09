@@ -6,31 +6,41 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Stockage mémoire du montant
-let montantActuel = 815; // Valeur initiale
+// Montant par défaut au démarrage
+let montantActuel = 815;
 
-// Route reçue de Make.com pour mettre à jour le montant
+// Route POST reçue de Make.com pour mettre à jour le montant
 app.post('/update-montant', (req, res) => {
-  const { montant } = req.body;
-  if (montant !== undefined && !isNaN(parseFloat(montant))) {
-    montantActuel = parseFloat(montant);
+  let { montant } = req.body;
+
+  // Nettoyage flexible : extrait uniquement les chiffres et les décimales
+  if (typeof montant === 'string') {
+    montant = montant.replace(/[^0-9.,]/g, '').replace(',', '.');
+  }
+
+  const valeurNum = parseFloat(montant);
+
+  if (!isNaN(valeurNum)) {
+    montantActuel = valeurNum;
     console.log(`Montant mis à jour : ${montantActuel} $`);
     return res.status(200).send({ success: true, montant: montantActuel });
   }
-  res.status(400).send({ error: "Montant invalide" });
+
+  res.status(400).send({ error: "Montant invalide reçu", recu: req.body.montant });
 });
 
-// Route d'affichage du thermomètre PNG
+// Route GET d'affichage du thermomètre PNG
 app.get('/thermometre.png', (req, res) => {
   const objectif = 3000;
   const couleurTheme = '#c21e56';
 
   const pourcentage = Math.min(Math.max((montantActuel / objectif) * 100, 0), 100);
 
+  // Création du Canvas (600x220 px)
   const canvas = createCanvas(600, 220);
   const ctx = canvas.getContext('2d');
 
-  // Arrière-plan
+  // Arrière-plan blanc avec coins arrondis
   ctx.fillStyle = '#ffffff';
   ctx.roundRect(0, 0, 600, 220, 12);
   ctx.fill();
@@ -41,18 +51,18 @@ app.get('/thermometre.png', (req, res) => {
   ctx.textAlign = 'center';
   ctx.fillText('OBJECTIF DU 50/50 : 3 000 $', 300, 45);
 
-  // Montant
+  // Montant récolté
   ctx.fillStyle = couleurTheme;
   ctx.font = 'bold 34px Arial';
   ctx.fillText(`${montantActuel.toLocaleString('fr-CA')} $ Amassés`, 300, 90);
 
-  // Thermomètre (Fond)
+  // Thermomètre (Fond gris)
   ctx.fillStyle = '#e0e0e0';
   ctx.beginPath();
   ctx.roundRect(50, 115, 500, 36, 18);
   ctx.fill();
 
-  // Thermomètre (Remplissage)
+  // Thermomètre (Remplissage rose)
   if (pourcentage > 0) {
     const largeurRemplissage = Math.max((500 * pourcentage) / 100, 36);
     ctx.fillStyle = couleurTheme;
@@ -73,7 +83,7 @@ app.get('/thermometre.png', (req, res) => {
   ctx.textAlign = 'center';
   ctx.fillText('Mise à jour automatique en temps réel', 300, 190);
 
-  // Anti-Cache
+  // En-têtes Anti-Cache obligatoires pour les courriels
   res.setHeader('Content-Type', 'image/png');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
